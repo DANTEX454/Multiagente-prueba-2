@@ -6,7 +6,7 @@ from lector import leer_archivo, leer_tablas
 from gerente import decidir_area
 from agentes import ejecutar_agente, AGENTES, CLAVE
 from modo_local import clasificar_local, ejecutar_local
-from oficina import html_oficina, duracion_area
+from oficina import html_escena, comando_html, duracion_area
 
 st.set_page_config(page_title="Oficina Virtual", page_icon="🏢", layout="wide")
 st.title("🏢 Oficina Virtual")
@@ -19,24 +19,32 @@ with st.sidebar:
         st.info("No hay clave de API configurada: la app trabaja en modo sin IA (solo CSV y Excel).")
     else:
         st.caption("Con IA, el gerente y los agentes interpretan el documento con Claude. Sin IA, solo se calculan los indicadores.")
+    canal = st.empty()  # aquí se envían las órdenes a la oficina (iframe invisible)
 
 usar_ia = bool(CLAVE) and not forzar_local
-oficina = st.empty()
+
+def incrustar(html, altura, auto=False):
+    """st.iframe en versiones nuevas de Streamlit; components.html en las anteriores."""
+    if hasattr(st, "iframe"):
+        st.iframe(html, height="content" if auto else max(altura, 1))
+    else:
+        components.html(html, height=altura)
 
 
-def mostrar(estado="espera", area=None, mensaje=""):
-    with oficina.container():
-        components.html(html_oficina(estado, area, mensaje), height=610)
+# La escena es SIEMPRE el mismo HTML: Streamlit no la recarga y las animaciones no se cortan.
+incrustar(html_escena(), 620, auto=True)
 
 
-mostrar()
+def orden(estado, area=None):
+    with canal:
+        incrustar(comando_html(estado, area), 0)
+
 
 archivo = st.file_uploader("Sube un documento (CSV, Excel, PDF o TXT)", type=["csv", "xlsx", "xls", "pdf", "txt"])
 pregunta = st.text_input("¿Qué necesitas? (opcional)", placeholder="Ej: proyecta las ventas de los próximos 6 meses")
 
 
 def esperar(desde, minimo):
-    """Deja que la animación se vea completa aunque el cálculo termine rápido."""
     resto = minimo - (time.time() - desde)
     if resto > 0:
         time.sleep(resto)
@@ -53,7 +61,7 @@ if st.button("Enviar al gerente", type="primary", disabled=archivo is None):
     tablas = leer_tablas(archivo.name, datos)
 
     t0 = time.time()
-    mostrar("gerente", mensaje="Revisando el documento…")
+    orden("gerente")
     decision, documento = None, ""
     if usar_ia:
         try:
@@ -68,7 +76,7 @@ if st.button("Enviar al gerente", type="primary", disabled=archivo is None):
     esperar(t0, 2.8)
     area = decision["area"]
     st.info(f"🧑‍💼 Gerente → {AGENTES[area]['emoji']} **{AGENTES[area]['nombre']}**: {decision['razon']}")
-    mostrar("area", area)
+    orden("area", area)
     t1 = time.time()
 
     respuesta = None
@@ -83,6 +91,6 @@ if st.button("Enviar al gerente", type="primary", disabled=archivo is None):
         respuesta = ejecutar_local(area, tablas, pregunta)
         st.caption("📐 Modo sin IA: resultados calculados con Python.")
 
-    esperar(t1, duracion_area(area) + 0.8)
-    mostrar("listo", area, "¡Listo!")
+    esperar(t1, duracion_area(area) + 1.5)
+    orden("listo", area)
     st.markdown(respuesta)
