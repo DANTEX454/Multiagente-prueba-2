@@ -1,11 +1,12 @@
 """Interfaz: streamlit run app.py"""
+import time
 import streamlit as st
 import streamlit.components.v1 as components
 from lector import leer_archivo, leer_tablas
 from gerente import decidir_area
 from agentes import ejecutar_agente, AGENTES, CLAVE
 from modo_local import clasificar_local, ejecutar_local
-from oficina import html_oficina
+from oficina import html_oficina, duracion_area
 
 st.set_page_config(page_title="Oficina Virtual", page_icon="🏢", layout="wide")
 st.title("🏢 Oficina Virtual")
@@ -25,13 +26,20 @@ oficina = st.empty()
 
 def mostrar(estado="espera", area=None, mensaje=""):
     with oficina.container():
-        components.html(html_oficina(estado, area, mensaje), height=520)
+        components.html(html_oficina(estado, area, mensaje), height=610)
 
 
 mostrar()
 
 archivo = st.file_uploader("Sube un documento (CSV, Excel, PDF o TXT)", type=["csv", "xlsx", "xls", "pdf", "txt"])
 pregunta = st.text_input("¿Qué necesitas? (opcional)", placeholder="Ej: proyecta las ventas de los próximos 6 meses")
+
+
+def esperar(desde, minimo):
+    """Deja que la animación se vea completa aunque el cálculo termine rápido."""
+    resto = minimo - (time.time() - desde)
+    if resto > 0:
+        time.sleep(resto)
 
 
 def aviso_ia(e):
@@ -44,6 +52,7 @@ if st.button("Enviar al gerente", type="primary", disabled=archivo is None):
     datos = archivo.getvalue()
     tablas = leer_tablas(archivo.name, datos)
 
+    t0 = time.time()
     mostrar("gerente", mensaje="Revisando el documento…")
     decision, documento = None, ""
     if usar_ia:
@@ -56,9 +65,11 @@ if st.button("Enviar al gerente", type="primary", disabled=archivo is None):
     if decision is None:
         decision = clasificar_local(tablas, pregunta)
 
+    esperar(t0, 2.8)
     area = decision["area"]
     st.info(f"🧑‍💼 Gerente → {AGENTES[area]['emoji']} **{AGENTES[area]['nombre']}**: {decision['razon']}")
     mostrar("area", area)
+    t1 = time.time()
 
     respuesta = None
     if usar_ia:
@@ -72,5 +83,6 @@ if st.button("Enviar al gerente", type="primary", disabled=archivo is None):
         respuesta = ejecutar_local(area, tablas, pregunta)
         st.caption("📐 Modo sin IA: resultados calculados con Python.")
 
+    esperar(t1, duracion_area(area) + 0.8)
     mostrar("listo", area, "¡Listo!")
     st.markdown(respuesta)
